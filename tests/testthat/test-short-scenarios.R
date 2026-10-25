@@ -104,18 +104,32 @@ test_that("tutorial code can be extracted and replayed independently", {
   }
   directory <- withr::local_tempdir()
   output <- file.path(directory, "tutorial.R")
-  saved_options <- knitr::opts_chunk$get()
-  withr::defer(knitr::opts_chunk$restore(saved_options))
-  withr::local_options(list(markdown.HTML.options = getOption("markdown.HTML.options")))
-  withr::local_seed(42)
   knitr::purl(input, output = output, quiet = TRUE)
+  writeLines(c(
+    paste0(".libPaths(", paste(deparse(.libPaths()), collapse = ""), ")"),
+    paste0("root <- ", paste(deparse(find.package("stormbreaker")), collapse = "")),
+    "if (file.exists(file.path(root, 'Meta', 'package.rds'))) {",
+    "  library(stormbreaker, lib.loc = dirname(root))",
+    "} else {",
+    "  pkgload::load_all(root, helpers = FALSE)",
+    "}",
+    "set.seed(42)",
+    "grDevices::pdf('tutorial.pdf')",
+    "source('tutorial.R', echo = FALSE, print.eval = TRUE)",
+    "grDevices::dev.off()",
+    "saveRDS(list(metrics = metrics, contributions = shap$contributions,",
+    "  reference_value = shap$reference_value, scores = shap$scores$score), 'result.rds')"
+  ), file.path(directory, "replay.R"), useBytes = TRUE)
   withr::local_dir(directory)
-  withr::local_pdf(file.path(directory, "tutorial.pdf"))
-  environment <- new.env(parent = globalenv())
-  expect_no_error(sys.source(output, envir = environment))
-  expect_s3_class(environment$metrics, "data.frame")
-  expect_identical(dim(environment$shap$contributions), c(8L, 3L))
+  status <- system2(file.path(R.home("bin"), "Rscript"), c("--vanilla", "replay.R"),
+    stdout = "replay.log", stderr = "replay.log")
+  expect_identical(status, 0L,
+    info = paste(tail(readLines("replay.log", warn = FALSE), 20), collapse = "\n"))
+  if (status != 0L) return(invisible(NULL))
+  result <- readRDS("result.rds")
+  expect_s3_class(result$metrics, "data.frame")
+  expect_identical(dim(result$contributions), c(8L, 3L))
   expect_equal(
-    unname(environment$shap$reference_value + rowSums(environment$shap$contributions)),
-    environment$shap$scores$score, tolerance = 1e-10)
+    unname(result$reference_value + rowSums(result$contributions)),
+    result$scores, tolerance = 1e-10)
 })

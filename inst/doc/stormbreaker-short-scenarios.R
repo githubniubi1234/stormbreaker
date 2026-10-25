@@ -1,5 +1,6 @@
 ## ----setup, include=FALSE-----------------------------------------------------
 library(stormbreaker)
+grDevices::pdfFonts(Arial = grDevices::pdfFonts("Helvetica")[[1L]])
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", message = FALSE,
   error = FALSE, fig.width = 7, fig.height = 4.8, dpi = 130, dev = "png",
   dev.args = list(type = "cairo"))
