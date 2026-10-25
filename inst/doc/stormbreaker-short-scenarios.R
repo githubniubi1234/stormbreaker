@@ -4,14 +4,7 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>", message = FALSE,
   error = FALSE, fig.width = 7, fig.height = 4.8, dpi = 130, dev = "png",
   dev.args = list(type = "cairo"))
 options(markdown.HTML.options = c("toc", "base64_images"))
-scripts <- c("01-binary.R", "02-compare.R", "03-external.R", "04-survival.R",
-  "05-diagnostics.R", "06-shap.R")
-for (file in scripts) {
-  knitr::read_chunk(system.file("examples", "scenarios", file,
-    package = "stormbreaker", mustWork = TRUE))
-}
-knitr::read_chunk(system.file("examples", "specialty-short-names.R",
-  package = "stormbreaker", mustWork = TRUE))
+
 
 ## ----input-binary, echo=FALSE-------------------------------------------------
 binary_input <- read.csv(system.file("extdata", "demo-binary-development.csv",

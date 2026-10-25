@@ -91,3 +91,31 @@ test_that("SHAP scenario reconstructs probabilities from its declared background
   expect_setequal(names(x$figures), c("Importance", "Beeswarm", "Dependence", "Waterfall"))
   expect_s3_class(x$figures$Waterfall, "ggplot")
 })
+
+test_that("tutorial code can be extracted and replayed independently", {
+  skip_if_not_installed("knitr")
+  skip_if_not_installed("ggplot2")
+  skip_if_not_installed("patchwork")
+  skip_if_not_installed("glmnet")
+  input <- test_path("..", "..", "vignettes", "stormbreaker-short-scenarios.Rmd")
+  if (!file.exists(input)) {
+    input <- system.file("doc", "stormbreaker-short-scenarios.Rmd",
+      package = "stormbreaker", mustWork = TRUE)
+  }
+  directory <- withr::local_tempdir()
+  output <- file.path(directory, "tutorial.R")
+  saved_options <- knitr::opts_chunk$get()
+  withr::defer(knitr::opts_chunk$restore(saved_options))
+  withr::local_options(list(markdown.HTML.options = getOption("markdown.HTML.options")))
+  withr::local_seed(42)
+  knitr::purl(input, output = output, quiet = TRUE)
+  withr::local_dir(directory)
+  withr::local_pdf(file.path(directory, "tutorial.pdf"))
+  environment <- new.env(parent = globalenv())
+  expect_no_error(sys.source(output, envir = environment))
+  expect_s3_class(environment$metrics, "data.frame")
+  expect_identical(dim(environment$shap$contributions), c(8L, 3L))
+  expect_equal(
+    unname(environment$shap$reference_value + rowSums(environment$shap$contributions)),
+    environment$shap$scores$score, tolerance = 1e-10)
+})
