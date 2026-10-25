@@ -1,0 +1,341 @@
+<!--
+%\VignetteIndexEntry{Six practical modeling workflows}
+%\VignetteEngine{knitr::knitr}
+%\VignetteEncoding{UTF-8}
+-->
+
+<style>
+body{max-width:1080px;margin:32px auto;padding:0 22px;font-family:system-ui,"Microsoft YaHei",sans-serif;line-height:1.7;color:#243342}
+h1,h2,h3{line-height:1.35;color:#163b55}h2{margin-top:2.5em;padding-bottom:.3em;border-bottom:1px solid #dbe5eb}
+pre{padding:16px;background:#f4f7fa;border-radius:6px;overflow-x:auto;font-size:14px;line-height:1.55}
+code{font-family:Consolas,monospace}img{max-width:100%;height:auto}table{display:block;overflow-x:auto;border-collapse:collapse;margin:1em 0;font-size:14px}
+th,td{padding:8px 12px;border-bottom:1px solid #dbe5eb;text-align:left}th{background:#eef4f8}a{color:#176f9a}blockquote{border-left:3px solid #91b6ca;margin-left:0;padding-left:16px;color:#4a6474}
+</style>
+
+```{r setup, include=FALSE}
+library(stormbreaker)
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", message = FALSE,
+  error = FALSE, fig.width = 7, fig.height = 4.8, dpi = 130, dev = "png",
+  dev.args = list(type = "cairo"))
+options(markdown.HTML.options = c("toc", "base64_images"))
+scripts <- c("01-binary.R", "02-compare.R", "03-external.R", "04-survival.R",
+  "05-diagnostics.R", "06-shap.R")
+for (file in scripts) {
+  knitr::read_chunk(system.file("examples", "scenarios", file,
+    package = "stormbreaker", mustWork = TRUE))
+}
+knitr::read_chunk(system.file("examples", "specialty-short-names.R",
+  package = "stormbreaker", mustWork = TRUE))
+```
+
+
+# STORMBREAKER: six practical workflows
+
+This tutorial connects prepared input tables to fitted models, evaluation tables
+and plots. All data are synthetic. Each scenario is a separate packaged script
+that returns example_result and figures; scripts do not automatically export
+files or open a browser.
+
+```r
+library(stormbreaker)
+source(system.file("examples", "scenarios", "01-binary.R",
+  package = "stormbreaker", mustWork = TRUE))
+figures$ROC
+```
+
+Replace the script name to run another scenario. The illustrated tutorial is
+also available through vignette("stormbreaker-short-scenarios").
+
+## Prepare the input
+
+Each row represents one patient and each predictor is a numeric feature.
+
+| Input | Required columns | Meaning |
+|---|---|---|
+| Binary development/evaluation | patient_id, outcome, gene_a, gene_b, gene_c | outcome is 0/1; 1 is the positive class |
+| Survival development/evaluation | patient_id, time, event, gene_a, gene_b, gene_c | event is 1 for an observed event and 0 for censoring; declare the time unit |
+| Prediction | patient_id and the fitted model's required features | Outcomes are not needed |
+| Explanation background | The model's predictor columns | A declared development/reference cohort |
+
+Replace the illustrative gene names with your prepared columns and declare them
+in predictors. Transpose a gene-by-sample expression matrix and align identifiers
+to clinical records before task construction. Raw sequencing processing,
+normalization, log transformation, identifier mapping and imputation are upstream
+steps. External features must use compatible definitions and preprocessing.
+
+The first three rows of the packaged binary development cohort are:
+
+```{r input-binary, echo=FALSE}
+binary_input <- read.csv(system.file("extdata", "demo-binary-development.csv",
+  package = "stormbreaker"), check.names = FALSE)
+knitr::kable(head(binary_input, 3), digits = 3)
+```
+
+For repeated observations, assign a unique row identifier and declare the patient
+group:
+
+```r
+task <- bi_task(development, "analysis_id", "outcome", genes,
+  group_col = "patient_id")
+```
+
+Supported resampling keeps each patient in one fold. This does not change row
+weights or automatically configure every native engine's internal resampling.
+The tutorial CSVs use one row per independent patient.
+
+## Follow the objects
+
+| Object | Constructor | Contents |
+|---|---|---|
+| data.frame | Prepared CSV/table | Identifiers, outcomes and numeric predictors |
+| task | bi_task(), surv_task() | Data, column roles, units and declared horizons/thresholds |
+| route | bi_pipeline(), surv_pipeline() | An unfitted selection/prediction specification |
+| comparison | compare_cv(), run$comparison | Saved cross-validation evidence |
+| fit | fit_final(), finished$fit | The reusable final model |
+| prediction | predict_final() | New-sample predictions without outcomes |
+| evaluation | eval_external() | ID-aligned outcomes, metrics, curves and status |
+| views | clinical_plots() | Plots, separate captions and availability |
+
+Final fitting does not replace CV. Prediction, result tables and clinical views
+do not train another model. SHAP adds an explanation calculation without refitting.
+
+## 1. Start with binary classification
+
+This scenario uses 120 development observations, Logistic regression and three
+folds. The small threshold grid is illustrative. plots=FALSE avoids an additional
+final fit during comparison; plots are drawn from the saved CV result.
+
+```{r scenario-binary}
+```
+
+run is the workflow object; run$comparison is the comparison. metrics contains
+the AUC result; figures includes ROC, calibration and decision curves.
+
+```{r binary-output, echo=FALSE}
+knitr::kable(metrics[c("pipeline_id", "metric", "estimate", "status", "scope")], digits = 3)
+figures$ROC
+```
+
+The ROC uses saved out-of-fold predictions and the existing fold-summary
+convention, not an apparent-training ROC. Access figures$Calibration and
+figures$DCA for the other views. Decision curves require declared thresholds;
+use clinically meaningful prespecified values rather than copying a demonstration
+grid into a study protocol.
+
+## 2. Compare specified models
+
+Logistic and Gaussian naive Bayes use the same candidate genes and outer folds.
+compare_cv() compares the declared routes; it does not choose a winner using an
+external test cohort.
+
+```{r scenario-compare}
+```
+
+The output contains two metric rows and comparison plots:
+
+```{r compare-output, echo=FALSE}
+knitr::kable(metrics[c("pipeline_id", "metric", "estimate", "status")], digits = 3)
+figures$Performance
+```
+
+Inspect models("binary") before adding a method to routes. An omitted model list
+requests a much larger menu and can increase runtime and dependency requirements.
+
+## 3. Evaluate one final model in two cohorts
+
+The development table has 120 observations; validation cohorts A and B have 80
+and 70. Their columns agree. finish_run() continues the selected Logistic route
+without repeating the complete candidate comparison; one final model predicts
+both cohorts.
+
+```{r scenario-external}
+```
+
+| Location | Contents |
+|---|---|
+| finished$fit | The final model |
+| finished$genes | Stage-wise feature tables |
+| finished$predictions$Validation_A | Original model predictions |
+| finished$evaluated_predictions$Validation_A | Predictions corresponding to reported metrics |
+| finished$evaluations$Validation_A | The evaluation object |
+| views$plots, views$status | Clinical plots and availability |
+
+The first three original predictions and cohort-level metrics are:
+
+```{r external-output, echo=FALSE}
+knitr::kable(head(finished$predictions$Validation_A[c("patient_id", "probability")], 3), digits = 3)
+knitr::kable(metrics[c("cohort_label", "metric", "estimate", "status")], digits = 3)
+figures$ROC
+```
+
+Pass a comparison or evaluation object, not the completed bundle, to result_table():
+
+```r
+result_table(finished$evaluations$Validation_A, metric = "roc_auc")
+```
+
+### Save files when needed
+
+The following code is not executed automatically. Use a new directory to retain
+previous results:
+
+```r
+export_run(finished, "analysis-output-new")
+clinical_report(views, "analysis-output-new/clinical-report.html")
+ggplot2::ggsave("analysis-output-new/external-roc.pdf", figures$ROC,
+  width = 7, height = 5)
+saveRDS(finished$fit, "analysis-output-new/final-model.rds")
+```
+
+Exports include comparison/feature tables, a cohort index, original/evaluation
+predictions, metrics and available plots. Review patient-level predictions,
+explanations and saved models before sharing. Without external outcomes, predict
+only; ROC, calibration and accuracy cannot be evaluated.
+
+## 4. Predict survival risk and horizon probabilities
+
+This scenario evaluates Cox risk ranking and six-month survival predictions.
+It uses 160 development observations and 100 validation observations.
+
+```{r input-survival, echo=FALSE}
+survival_input <- read.csv(system.file("extdata", "demo-survival-development.csv",
+  package = "stormbreaker"), check.names = FALSE)
+knitr::kable(head(survival_input, 3), digits = 3)
+```
+
+Declare time_unit="month" with prediction_horizon=6. An event is coded as 1 and
+censoring as 0; follow-up time must not be discarded as though this were an
+ordinary binary endpoint.
+
+```{r scenario-survival}
+```
+
+Predictions retain risk and survival probability. Concordance and horizon-specific
+metrics are separate tables; the latter preserve the time and unit.
+
+```{r survival-output, echo=FALSE}
+knitr::kable(head(prediction$predictions[c("patient_id", "risk", "survival_probability",
+  "prediction_horizon", "time_unit")], 3), digits = 3)
+knitr::kable(metrics[c("metric", "estimate", "status")], digits = 3)
+knitr::kable(horizon_metrics[c("metric", "estimate", "status", "prediction_horizon", "time_unit")], digits = 3)
+figures$Calibration
+```
+
+A risk score is not a probability. survival_probability is the probability of
+remaining alive at the specified horizon; decision curves use its event-risk
+complement. Time-dependent AUC differs from ordinary binary ROC. Without a
+prediction horizon, absolute-probability calibration and horizon-specific decision
+curves are unavailable.
+
+## 5. Select features and inspect native diagnostics
+
+The ordered route is Lasso selection followed by Logistic prediction. It needs
+glmnet, installed by the user. capture_diagnostics=TRUE retains native evidence
+during fitting rather than refitting when a plot is requested.
+
+```{r scenario-diagnostics, eval=requireNamespace("glmnet", quietly=TRUE)}
+```
+
+fit$required_features lists the features needed for prediction. Available native
+views are in diagnostics$plots; the example shows retained genes and the selection
+CV curve:
+
+```{r diagnostics-output, echo=FALSE, eval=requireNamespace("glmnet", quietly=TRUE)}
+knitr::kable(retained_genes)
+knitr::kable(data.frame(plot = names(figures)))
+figures$selector_1_cv
+```
+
+The coefficient path and final-model coefficients are separate views.
+Inspect diagnostics$unavailable when evidence is absent; an older saved fit
+cannot supply a path it never retained. selected_genes() applies to independent
+method-analysis results rather than arbitrary fitted model objects.
+
+Additional routes can be defined explicitly:
+
+```r
+surv_pipeline("pamr", selector = surv_selector("Ridge"))
+bi_pipeline(c("mRMR", "xgboost_linear"))
+bi_pipeline(c("RF", "mclustda_bic"))
+```
+
+These are unfitted specifications requiring suitable data and optional engines.
+
+### Extract diagnostics with short names
+
+| Evidence | Interface |
+|---|---|
+| Regularization paths and saved CV | path_diag() |
+| Forest importance, tree size and supported OOB evidence | forest_diag() |
+| PAMR centroids | pamr_diag() |
+| mclustDA components | mclust_diag() |
+| SVM, PLS and naive Bayes structure | svm_diag(), pls_diag(), nb_diag() |
+| Complete availability table | native_diag(fit, complete=TRUE)$status |
+| Diagnostic plotting | plot_diag() |
+
+The following fits a Lasso predictor and extracts its own CV curve and path.
+It is different from the Logistic predictor downstream of Lasso selection.
+
+```{r specialty-lasso, eval=requireNamespace("glmnet", quietly=TRUE)}
+```
+
+```{r specialty-output, echo=FALSE, eval=requireNamespace("glmnet", quietly=TRUE)}
+knitr::kable(head(cv$table, 3), digits = 4)
+figures$CV
+```
+
+The full mapping is in guides/specialty-name-map.csv and the accompanying
+specialty-short-names.md guide. Original names and existing aliases remain valid.
+Export generated algorithm plots through a completed workflow:
+
+```r
+r <- bi_run(development, outcome="outcome", id="patient_id",
+  predictors=genes, models="Lasso", plots=FALSE)
+done <- finish_run(r, "Lasso", plots=TRUE)
+export_run(done, "native-plots-new")
+write.csv(path_diag(done$fit, "cv_curve")$table,
+  "native-plots-new/lasso-cv.csv", row.names=FALSE)
+```
+
+figures.csv maps exported PDFs to plot names. Export native diagnostic tables
+separately when required. An internal tuning curve does not replace out-of-fold
+or external evaluation of the complete route.
+
+## 6. Explain individual predictions
+
+The example first prepares a Logistic model. For an existing model, load the
+saved fit instead. Query data contain only identifiers and features; background
+features come from development data.
+
+```{r scenario-shap}
+```
+
+shap$contributions is an eight-sample by three-feature matrix. The reference value
+plus a row's contributions reconstructs that sample's saved model score.
+Here model_shap() explains positive-class probabilities using an approximate
+permutation estimator, not exact TreeSHAP. Sixteen permutations keep the example
+small; assess approximation stability for your application.
+
+```{r shap-output, echo=FALSE}
+knitr::kable(head(shap$contributions, 3), digits = 4)
+figures$Beeswarm
+figures$Waterfall
+```
+
+Use figures$Importance and figures$Dependence for the other views.
+SHAP describes this model and background, not causal effects or automatically
+selected clinical thresholds.
+
+## Troubleshooting
+
+| Symptom | Inspect |
+|---|---|
+| Invalid task data | Column names, endpoint codes, missing values and identifiers |
+| Failed fit | fit$status and the recorded error; run$issues or finished$issues |
+| Missing clinical view | views$status |
+| Missing native diagnostic | diagnostics$unavailable and retained fitting evidence |
+| Failed evaluation | evaluation$status, IDs, required features, horizon and units |
+| Function-name collision | A qualified name such as stormbreaker::fit_final() |
+
+Packaged paths are obtained through system.file(). Replace the simulated input
+with prepared study data while retaining the declared object types and input roles.

@@ -1,0 +1,160 @@
+---
+title: "Export a saved-result HTML report"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Export a saved-result HTML report}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+The report reads already evaluated results. It does not train, select a winning
+pipeline, calculate missing metrics or invent confidence intervals. It includes
+metric/status tables and performance, calibration and decision curves.
+
+```{r example, eval=FALSE}
+library(stormbreaker)
+d <- bi_example(120, seed=1)
+task <- bi_task(d, "patient_id", "outcome", c("gene_a","gene_b"),
+                       decision_thresholds=c(0.1,0.2,0.3,0.5,0.7))
+pipeline <- sb_pipeline(learner="logistic")
+cv <- run_cv(task,pipeline,folds=3,seed=1)
+fit <- fit_final(task,pipeline)
+external <- bi_example(100,seed=2)
+external$patient_id <- paste0("EXT_",external$patient_id)
+prediction <- predict_final(fit,external[c("patient_id","gene_a","gene_b")],
+                               id_col="patient_id")
+endpoint <- bi_endpoint(external,"patient_id","outcome")
+evaluation <- eval_external(prediction,endpoint)
+sb_render_report(list(Development=cv, External=evaluation),
+                 "my-new-report.html",title="Saved model evaluation")
+```
+
+Choose a new filename: both the HTML and companion `<stem>_failures.csv` paths
+must be new and are never overwritten. The report is an offline HTML file,
+with self-contained SVG images and selectable text
+in tables. No Pandoc, external fonts, JavaScript or network requests are needed.
+The plotting dependency is the existing optional `ggplot2` package.
+
+Survival sections with a saved prediction horizon or fixed-horizon metric
+include `time_auc`, `uno_c`, and `ipcw_brier`, in addition to Harrell C.
+The tables and plots retain the saved time target and unit. Different targets
+are labeled separately, not pooled or converted; IPCW Brier plots retain
+weighted estimates above one. Horizon-free sections do not add these metric
+sections, and absent requested values remain unavailable rather than being
+computed during report generation.
+
+A single CV result, shared-fold comparison, external evaluation or single-cohort
+external comparison is accepted. To include several cohorts, use a uniquely
+named list. Each member remains in its own section. Labels do not establish
+external independence, and cross-cohort metrics are not pooled. Survival uses
+saved Harrell C, with calibration and DCA showing the saved horizon where one
+was declared; unrequested curves are not calculated. Default tables and plots
+show usable results only, without empty method labels or panels. Issue counts
+and a link to the separate failure CSV remain visible. All-failed sections
+explicitly say there are no usable results, not that the analysis succeeded.
+
+Patient-level tables, serialized result objects and raw free-text errors are
+excluded from the HTML. The separate CSV includes saved pipeline/run/metric
+issues with cohort, stage, fold, status and original error text. A pipeline
+summary and its detailed issues are separate rows: row count is not a failed
+pipeline count. No issues produces a header-only CSV. Review this CSV separately
+before sharing or opening in software that interprets formulas in cells.
+Cohort/pipeline labels and plotted calibration curves still describe
+the source data: review labels and the report before sharing. This is not a
+promise of anonymization. Inspect detailed errors in local result objects.
+Numbers in tables use eight significant digits; original objects are unchanged.
+If an I/O error interrupts the two-file write, a completed CSV can remain;
+inspect the paths and choose new filenames rather than overwriting it.
+
+## Whole composite results
+
+Tables, performance/calibration/DCA plots, reports and failure exports accept
+whole repeated CV, IECV and stacking CV results. Context columns identify
+`repeat_id`, `heldout_cohort_id`, `model_role`, `validation_scheme` and `view_id`.
+A `view_id` identifies a structural saved entry, not a patient. Existing
+pipeline IDs remain unchanged. Repeated stacks retain member/stack roles.
+IECV is method-development validation, not final independent external
+validation. No averaging or pooling across repeats or cohorts is performed.
+
+```{r composite-saved-results}
+library(stormbreaker)
+composite_data <- bi_example(60, seed = 5)
+composite_task <- bi_task(
+  composite_data, "patient_id", "outcome", "gene_a"
+)
+composite_result <- sb_compare_repeated_cv(
+  composite_task, list(sb_pipeline(learner = "logistic")),
+  folds = 3, seeds = c(1, 2)
+)
+result_table(composite_result, metric = "roc_auc")
+sb_failure_table(composite_result)
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  plot_perf(composite_result, "roc_auc")
+}
+```
+
+Pass the same whole object to `sb_render_report()` with a new HTML filename;
+each saved leaf gets a separate section. Pass a native `sb_run_stack_cv()` or
+`sb_run_internal_external_cv()` result in exactly the same way. Stack views
+show outer-CV members and the stack, not inner training folds. Failed entries
+remain in tables and failure exports; default plots omit unavailable entries.
+Different survival horizons and units remain distinct targets.
+
+## Clinician report with model-specific figures
+
+For a saved evaluation `cv`, assemble the core clinical report without
+extracting or plotting algorithm-specific technical diagnostics:
+
+```{r clinician-report, eval=FALSE}
+views <- clinical_plots(cv)
+clinical_report(views, "clinical-summary.html")
+```
+
+The report initially expands only the first topic. Expanding every topic does
+not compute extra diagnostics. Performance curves retain their saved evaluation
+contexts; there is no automatic model-specific figure export.
+
+Only when technical diagnostics are wanted, call the extraction function
+explicitly and optionally add the extracted results to a report:
+
+```{r clinician-detail, eval=FALSE}
+native <- native_diag(fit, complete = TRUE)
+views <- clinical_plots(cv, native = native)
+clinical_report(views, "clinical-detail.html", complete = TRUE)
+views$status
+```
+
+The extractor's `complete` controls which registered diagnostics are requested;
+the renderer's `complete` only controls which topics are initially expanded.
+Missing captured artifacts remain marked
+`missing_capture`; unavailable views retain their reasons. Neither option
+reconstructs a missing training history or retrains the model.
+
+Neighbor and other query-specific diagnostics need explicit rows:
+
+```{r clinician-query, eval=FALSE}
+native <- native_diag(fit, newdata = query_rows)
+views <- clinical_plots(cv, native = native)
+```
+
+No training rows are chosen automatically. Query-level figures can expose
+individual values; review them before sharing. Individual algorithm extractors
+and plotting functions are also available without generating a report.
+Saved SHAP and exact-model nomograms can additionally be supplied through
+`shap` and `nomogram`; they are not silently computed for every model.
+
+## One figure instead of separate PDFs
+
+Select related available views explicitly, in panel order:
+
+```{r clinician-panel, eval=FALSE}
+panel <- plot_panel(views, c("ROC", "Calibration"))
+ggplot2::ggsave("discrimination-calibration.pdf", panel, width = 12, height = 5)
+attr(panel, "stormbreaker_captions")
+```
+
+The caption table retains original titles and explanations outside the image.
+Choose a new filename when saving. Panel letters, short titles, axes and legends
+remain in the figure. Increase the export size or split complex faceted views
+rather than reducing text size. Patchwork is needed only for this combination
+step, not for ordinary reports or model fitting.

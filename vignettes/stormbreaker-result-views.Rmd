@@ -1,0 +1,225 @@
+---
+title: "Read and plot saved CV results"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Read and plot saved CV results}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 8,
+  fig.height = 4.5
+)
+```
+
+The examples below complete a short workflow: run predeclared models, read the
+saved results as tables, and draw a performance plot. The data are synthetic;
+they illustrate software behavior, not clinical usefulness or external validity.
+
+`result_table()` and `plot_perf()` only read saved results. They do
+not train, tune, recalibrate, recompute metrics, or select a winning model.
+
+## Binary prediction: two models on the same folds
+
+```{r binary-run}
+library(stormbreaker)
+d <- bi_example(n = 60, seed = 1)
+task <- bi_task(
+  d, "patient_id", "outcome", c("gene_a", "gene_b")
+)
+compared <- compare_cv(
+  task,
+  list(
+    sb_pipeline(learner = "logistic"),
+    sb_pipeline(learner = "gaussian_naive_bayes")
+  ),
+  folds = 3,
+  seed = 1
+)
+```
+
+### Read a metric table
+
+```{r binary-table}
+result_table(compared, metric = "roc_auc")
+```
+
+Each row represents one supplied pipeline. These columns answer different
+questions:
+
+| Column | Meaning |
+|:--|:--|
+| `estimate` | The original saved value, including missing or infinite values |
+| `status` | Whether this particular metric is evaluable |
+| `run_status` | Whether the complete CV run succeeded |
+| `scope` | Which observations/comparisons the metric describes |
+| `aggregation` | How the saved metric combines its contributions |
+
+For binary ROC AUC, comparisons are within outer assessment folds, with the
+saved pair-based aggregation. This is **not** a new pooled ROC AUC calculation
+across predictions from different fitted folds. Average precision also keeps
+its saved fold-aware definition; it is not relabeled as interpolated PR AUC.
+
+Other supported binary choices are:
+
+```{r binary-other-metrics}
+result_table(compared, metric = "average_precision")
+result_table(compared, metric = "brier_score")
+result_table(compared, metric = "log_loss")
+```
+
+### Draw the first performance plot
+
+Plotting needs the optional package `ggplot2`. If it is absent, install it with
+`install.packages("ggplot2")`; tables and model fitting do not need it.
+
+```{r binary-plot}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  print(plot_perf(compared, "roc_auc"))
+}
+```
+
+Models appear top-to-bottom in the original input order, not performance order.
+Only finite estimates from successful metrics **and** successful complete runs
+are drawn. A method without a point still has an axis label. The caption counts
+these methods; the metric table supplies their separate statuses.
+
+There are no confidence intervals in this plot. Fold-to-fold variability is not
+silently turned into a confidence interval. Selecting the highest observed
+development score and reporting it as an unbiased winner is not supported.
+
+## Patient predictions and run records
+
+```{r binary-details}
+head(result_table(compared, "predictions"))
+result_table(compared, "runs")
+```
+
+These tables preserve saved columns and add `task_type`. Each pipeline retains
+its own patient predictions, so patient IDs legitimately recur across pipelines.
+Use the pipeline and patient columns together; do not treat rows from several
+models as independent patients. Output row names are reset and are not IDs.
+
+The run table retains existing `error_class` and `error_message` fields. A stage
+is not guessed from the wording of an old error. If one method fails, its row
+does not disappear and its estimate is not filled with zero or another model's
+prediction. Inspect both the metric table and run records.
+
+Default performance plots show only successful, finite metrics from successful
+runs, without empty method labels. `show_unavailable = TRUE` restores the
+diagnostic display. If none are usable, the plot says so rather than implying
+a successful analysis. `sb_failure_table(compared)` extracts saved issues;
+`sb_export_failures(compared, "new-failures.csv")` writes a separate CSV with
+cohort, pipeline, stage, fold, metric, status and saved reason. Review original
+error text before sharing. Model-dependent failures remain recorded while
+later valid pipelines continue; no fallback model is substituted.
+
+**Patient tables can include identifiers and outcomes.** Review them before
+sharing; no export or automatic patient-level report is performed here.
+
+## Survival prediction
+
+```{r survival-run}
+s <- surv_example(n = 60, seed = 1)
+survival_task <- surv_task(
+  s, "patient_id", "time", "event", c("gene_a", "gene_b"), "month"
+)
+survival_result <- run_cv(survival_task, folds = 3, seed = 1)
+result_table(survival_result, metric = "harrell_c")
+head(result_table(survival_result, "predictions"))
+result_table(survival_result, "runs")
+```
+
+```{r survival-plot}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  print(plot_perf(survival_result, "harrell_c"))
+}
+```
+
+Harrell C keeps its saved within-fold comparisons and summed-comparable-pair
+aggregation. A single saved CV result is accepted, as is a shared-fold
+comparison of survival pipelines. These results remain development CV results;
+plotting does not turn them into external validation.
+
+## Read saved fixed-horizon survival metrics
+
+```{r survival-horizon-metrics}
+horizon_task <- surv_task(
+  s, "patient_id", "time", "event", "gene_a", "month",
+  prediction_horizon = 6
+)
+horizon_result <- run_cv(horizon_task, folds = 3, seed = 1)
+for (metric in c("time_auc", "uno_c", "ipcw_brier")) {
+  print(result_table(horizon_result, metric = metric))
+}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  print(plot_perf(horizon_result, "ipcw_brier"))
+}
+```
+
+These are the saved cumulative/dynamic time-AUC, truncated Uno C and IPCW
+Brier estimate, not a new calculation. Each table retains the horizon and
+time unit. Plot labels keep different targets distinct, without conversion or
+pooling. The weighted Brier estimate may exceed one and is not clipped.
+
+## Scope of the result-view interface
+
+- Supported objects: single binary/survival CV, shared-fold CV comparisons,
+  external evaluations and single-cohort external comparisons.
+- Supported scalar metrics: binary `roc_auc`, `average_precision`,
+  `brier_score`, `log_loss`, and survival `harrell_c`, `time_auc`, `uno_c`,
+  `ipcw_brier`.
+- Explicitly choose a metric for a metric table. Do not pass `metric` when
+  requesting predictions or run records.
+- The three fixed-horizon metrics return `not_requested` and `NA` if absent
+  from a successful horizon-free result, or `not_saved` if absent otherwise.
+  Other unsupported/missing requests retain explicit errors. No missing metric
+  is computed on demand.
+- Nested reference/skill scores and feature stability keep their detailed
+  objects. Calibration and decision curves have dedicated plot functions.
+- Whole repeated CV, IECV and stacking CV now retain separate saved-entry
+  contexts in tables, plots, reports and failure exports, without pooling.
+- The existing full workflow vignette explains final fitting and outcome-blind
+  external evaluation. This tutorial adds result reading, not a replacement
+  model-development framework.
+
+Plots are ordinary `ggplot` objects that can be customized and saved explicitly.
+For many long pipeline labels, use a taller output image or display a smaller,
+predeclared candidate set. No files are written by the plotting function itself.
+
+## Whole composite results
+
+Tables, performance/calibration/DCA plots, reports and failure exports accept
+whole repeated CV, IECV and stacking CV results. Context columns identify
+`repeat_id`, `heldout_cohort_id`, `model_role`, `validation_scheme` and `view_id`.
+A `view_id` identifies a structural saved entry, not a patient. Existing
+pipeline IDs remain unchanged. Repeated stacks retain member/stack roles.
+IECV is method-development validation, not final independent external
+validation. No averaging or pooling across repeats or cohorts is performed.
+
+```{r composite-saved-results}
+composite_data <- bi_example(60, seed = 5)
+composite_task <- bi_task(
+  composite_data, "patient_id", "outcome", "gene_a"
+)
+composite_result <- sb_compare_repeated_cv(
+  composite_task, list(sb_pipeline(learner = "logistic")),
+  folds = 3, seeds = c(1, 2)
+)
+result_table(composite_result, metric = "roc_auc")
+sb_failure_table(composite_result)
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  plot_perf(composite_result, "roc_auc")
+}
+```
+
+Pass the same whole object to `sb_render_report()` with a new HTML filename;
+each saved leaf gets a separate section. Pass a native `sb_run_stack_cv()` or
+`sb_run_internal_external_cv()` result in exactly the same way. Stack views
+show outer-CV members and the stack, not inner training folds. Failed entries
+remain in tables and failure exports; default plots omit unavailable entries.
+Different survival horizons and units remain distinct targets.

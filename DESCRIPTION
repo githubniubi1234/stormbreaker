@@ -1,0 +1,72 @@
+Package: stormbreaker
+Title: Transcriptomic Prediction and Model Comparison
+Version: 0.3.47
+Authors@R: 
+    person(
+      given = "HimejimaGyomei",
+      role = c("aut", "cre"),
+      email = "Polishedtjq1171137951@outlook.com"
+    )
+Description: Build and compare transcriptomic prediction models for binary
+    and right-censored survival outcomes. A common interface combines model
+    specification, feature selection, shared-fold comparison, nested tuning,
+    final fitting and independent-cohort evaluation. Saved predictions support
+    discrimination, calibration, decision-curve analysis, feature stability,
+    cohort-level synthesis and graphical reports. Reusing identical fold-local
+    forest selections accelerates comparisons across multiple learners. Models
+    are provided through native R engines with task-specific configurations.
+    Native multiclass forests, multinomial regularized regression,
+    discriminant analysis, naive Bayes and classification trees support
+    independent feature analysis and shared-fold model evaluation.
+License: MIT + file LICENSE
+URL: https://github.com/githubniubi1234/stormbreaker
+BugReports: https://github.com/githubniubi1234/stormbreaker/issues
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Depends: R (>= 4.3.0)
+Imports: grid, lpSolve, methods, parallel, rlang, scales, survival, utils, withr
+Suggests: abess (>= 0.4.11), ahaz (>= 1.15.1), aorsf (>= 0.1.6),
+        arm (>= 1.15-3),
+        BART (>= 2.9.0),
+        Biobase (>= 2.68.0),
+        bnnSurvival (>= 0.1.5),
+        survivalmodels,
+        distr6,
+        Boruta (>= 9.0.0), brglm2 (>= 1.1.0), bst (>= 0.3-24),
+        bujar (>= 0.2-11),
+        C50 (>= 0.2.0),
+        cancerclass (>= 1.52.0),
+        caTools (>= 1.18.3), catboost (>= 1.2.0), class (>= 7.3),
+        coin (>= 1.1.0),
+        CoxBoost (>= 1.5.1), coxphf (>= 1.13.4), DWDLargeR (>= 0.2.0),
+        e1071 (>= 1.7.0), earth (>= 5.3.0),
+        evtree (>= 1.0.0), fastAdaboost (>= 1.0.0), flexsurv (>= 2.3.2),
+        gbm (>= 2.2.0), ggplot2, ggvenn, hda (>= 0.2-14), HDclassif (>= 2.2.2),
+        glmnet (>= 4.1-2), ipred (>= 0.9.0), jsonlite,
+        kernlab (>= 0.9.0), kknn (>= 1.4.0),
+        klaR (>= 1.7.0), knitr, LiblineaR (>= 2.10.0), lightgbm (>= 4.0.0),
+        lpc (>= 1.0.2.1),
+        metafor (>= 4.0.0), MASS (>= 7.3), mboost (>= 2.9.0),
+        mclust (>= 6.1.0), mixOmics (>= 6.32.0), MTLR (>= 0.2.2),
+        markdown, mda (>= 0.5.0), mgcv (>= 1.9-0),
+        neuralnet (>= 1.44.0), ncvreg (>= 3.16.0), nnet (>= 7.3),
+        pamr (>= 1.56), patchwork, penAFT (>= 0.3.2), pkgload,
+        partykit (>= 1.2),
+        plsRcox (>= 1.8.0), plsRglm (>= 1.6.0), pre (>= 1.1.0),
+        praznik (>= 13.0.0),
+        randomForest (>= 4.7), randomForestSRC (>= 3.3.0),
+        randomGLM (>= 1.10-1),
+        rFerns (>= 2.0.0), robustbase (>= 0.99.0),
+        ranger (>= 0.18.0), RLT (>= 3.2.6), rmarkdown,
+        rotationForest (>= 0.1.0),
+        rpart (>= 4.1), RRF (>= 1.9.0), sda (>= 1.3.0), SIS (>= 1.5),
+        SLOPE (>= 2.1.1), stabs (>= 0.7-1),
+        superpc (>= 1.12), survivalsvm (>= 0.0.6), svglite, switchBox (>= 1.44.0),
+        testthat (>= 3.0.0),
+        timereg (>= 2.0.7), tree (>= 1.0-40),
+        varSelRF (>= 0.7-9), VSURF (>= 1.2.1), wsrf (>= 1.7.32),
+        xgboost (>= 1.7.0)
+Config/testthat/edition: 3
+VignetteBuilder: knitr
+NeedsCompilation: no

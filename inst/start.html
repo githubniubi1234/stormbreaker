@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>stormbreaker · 从这里开始</title>
+<style>
+:root{font-family:system-ui,"Microsoft YaHei",sans-serif;color:#19332e;background:#f6f8f7;line-height:1.6}*{box-sizing:border-box}body{margin:0}main{max-width:1060px;margin:auto;padding:48px 24px}header{margin-bottom:28px}.brand{font-weight:700;color:#267160;letter-spacing:.08em}h1{font-size:clamp(28px,4vw,42px);margin:12px 0 8px;line-height:1.25}h2{font-size:23px;margin:0 0 8px}p{margin:8px 0 18px;color:#4c625c}nav{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:28px 0}button{font:inherit;cursor:pointer}nav button{text-align:left;border:1px solid #cbd8d3;background:white;border-radius:12px;padding:20px;color:#19332e}nav button[aria-pressed=true]{border-color:#267160;background:#e5f1eb;box-shadow:inset 0 0 0 1px #267160}nav strong{display:block;font-size:21px}nav span{display:block;margin-top:5px;font-size:14px;color:#52665f}button:focus-visible,summary:focus-visible{outline:3px solid #2082bc;outline-offset:4px}section{background:white;padding:28px;border:1px solid #dce4e0;border-radius:14px}[hidden]{display:none!important}.codebar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:20px}.copy{border:0;border-radius:7px;background:#267160;color:white;padding:8px 16px}.status{font-size:14px;color:#267160}pre{padding:20px;background:#f1f5f3;border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.75}code{font-family:ui-monospace,Consolas,monospace}details{margin:20px 0}summary{cursor:pointer;color:#267160;font-weight:600}.note{border-left:3px solid #a7c9b9;padding-left:14px}.advanced{margin-top:28px;padding:0 4px}.advanced p{margin-top:14px}footer{margin-top:30px;color:#64766f;font-size:13px}@media(max-width:600px){main{padding:26px 14px}nav{grid-template-columns:1fr;gap:9px}nav button{padding:13px 16px}nav span{margin-top:0}section{padding:19px}pre{padding:12px}.codebar{align-items:flex-start}}@media print{body{background:white}main{max-width:none;padding:0}nav,.copy,.status,footer{display:none}section[hidden]{display:block!important}section{margin:18px 0;break-inside:avoid}details>*{display:block!important}pre{overflow:visible}}
+</style></head><body><main>
+<header><div class="brand">stormbreaker</div><h1>先选一件要做的事</h1><p>从二分类示例开始。复制代码到 R 运行，再换成自己的数据。</p></header>
+<p>完整的六场景图文教程已随包安装。在R中运行：<code>vignette("stormbreaker-short-scenarios", package = "stormbreaker")</code>，查看输入表、函数组合、输出和图片。</p>
+<nav aria-label="分析目标">
+<button type="button" data-action="compare" aria-controls="compare" aria-pressed="true"><strong>二分类建模</strong><span>单模型、模型组合与基因贡献</span></button>
+<button type="button" data-action="validate" aria-controls="validate" aria-pressed="false"><strong>验证已有模型</strong><span>在另一批患者中检验表现</span></button>
+</nav>
+<section id="compare" aria-labelledby="compare-title"><h2 id="compare-title">在同一个入口建模、组合和查看基因</h2><p>从单模型开始；也可指定 Lasso → RF → GBM 等顺序。基因提取是建模链的一部分，不再另设筛基因任务。</p>
+<details><summary>首次使用：安装这一项需要的依赖</summary><pre><code>install.packages(c("glmnet", "randomForest", "ggplot2"))</code></pre></details>
+<div class="codebar"><strong>可运行示例</strong><button class="copy" type="button" data-copy="compare-code">复制代码</button></div><pre><code id="compare-code">@@COMPARE@@</code></pre>
+<p class="note">缺少依赖或拟合失败会如实显示，不会偷偷换算法。净获益需要事先声明适用阈值。</p></section>
+<section id="validate" hidden aria-labelledby="validate-title"><h2 id="validate-title">模型不再训练，只在新队列上评价</h2><p>示例先准备一个模型，再用另一份模拟数据验证。真实使用时替换为保存的模型和新队列。</p>
+<details><summary>首次使用：需要哪些依赖？</summary><p>这个逻辑回归示例只用核心安装。其他模型按其原生引擎按需安装，不必安装完整算法目录。</p></details>
+<div class="codebar"><strong>可运行示例</strong><button class="copy" type="button" data-copy="validate-code">复制代码</button></div><pre><code id="validate-code">@@VALIDATE@@</code></pre>
+<p class="note">输入列需要与模型一致。只有预测值、没有真实结局时，不能计算验证性能。</p></section>
+<p class="status" role="status" aria-live="polite" id="copy-status"></p>
+<details class="advanced"><summary>换成真实数据、多分类或生存分析</summary><p>真实数据：一行一个样本，单独声明编号、结局和候选特征；重复患者要声明分组。先检查列含义，不要让编号进入模型。</p><pre><code># 读取自己的表格，再明确指定列名
+data &lt;- read.csv(file.choose(), check.names = FALSE)
+
+# 在 R 中查看相应说明
+?bi_task
+?multi_task
+?surv_task
+
+# 高级功能仍保留，不默认全部运行
+models("binary")
+sb_method_catalog("multiclass")</code></pre></details>
+<footer>本页是本地操作导航，不执行R代码，也不读取或上传患者数据。<details><summary>关于示例</summary>模拟数据只演示软件用法，不代表临床效果。<br>AI-generated. Verify critical decisions independently.</details></footer>
+</main><script>
+const buttons=document.querySelectorAll('[data-action]');
+buttons.forEach(button=>button.addEventListener('click',()=>{
+ buttons.forEach(other=>other.setAttribute('aria-pressed',String(other===button)));
+ document.querySelectorAll('main>section').forEach(section=>section.hidden=section.id!==button.dataset.action);
+ document.getElementById('copy-status').textContent='';
+}));
+document.querySelectorAll('[data-copy]').forEach(button=>button.addEventListener('click',async()=>{
+ const code=document.getElementById(button.dataset.copy),status=document.getElementById('copy-status');
+ try{await navigator.clipboard.writeText(code.textContent);status.textContent='已复制，请粘贴到 R 运行。';}
+ catch{const range=document.createRange();range.selectNodeContents(code);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);status.textContent='代码已选中，请按 Ctrl+C 复制。';}
+}));
+</script></body></html>

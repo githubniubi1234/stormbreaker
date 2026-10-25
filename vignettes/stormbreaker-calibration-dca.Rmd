@@ -1,0 +1,216 @@
+---
+title: "Saved calibration and decision curves"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Saved calibration and decision curves}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 9,
+                     fig.height = 6, warning = TRUE)
+```
+
+The two plotting functions read **already saved** evaluation curves. Neither
+function fits a model, recalibrates predictions, searches for a useful cutoff,
+or calculates a missing curve. All data and thresholds below are synthetic
+demonstrations, not clinical evidence or recommended treatment thresholds.
+
+```{r load}
+library(stormbreaker)
+predictors <- c("gene_a", "gene_b")
+thresholds <- c(0.1, 0.2, 0.3, 0.5, 0.7)
+```
+
+Plotting requires the optional `ggplot2` package. If unavailable, install it
+with `install.packages("ggplot2")`; core fitting and tables do not require it.
+
+## Binary development results
+
+Declare the DCA thresholds in the development task, before fitting or inspecting
+external outcomes. An outcome-blind final prediction carries this declaration
+forward to external evaluation.
+
+```{r binary-cv}
+binary_data <- bi_example(120, seed = 1)
+binary_task <- bi_task(
+  binary_data, "patient_id", "outcome", predictors,
+  decision_thresholds = thresholds
+)
+binary_pipeline <- sb_pipeline(learner = "logistic")
+binary_cv <- run_cv(binary_task, binary_pipeline, folds = 3, seed = 1)
+```
+
+```{r binary-calibration}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  print(plot_calib(binary_cv))
+}
+```
+
+Binary calibration compares predicted class-1 probability with the **saved
+smoothed descriptive estimate** of observed probability. The dashed diagonal
+is ideal calibration, not a fitted model. The curve is not applied to future
+predictions, and no uncertainty band is inferred by the plotting function.
+
+```{r binary-dca}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  print(plot_dca(binary_cv))
+}
+```
+
+DCA shows net benefit for the model, treating all, and treating none at each
+saved threshold. Negative net benefit remains visible. Points mark the actual
+thresholds; lines only connect them. A higher line in this demonstration is
+not evidence that a treatment or threshold should be selected clinically.
+
+## Binary external evaluation
+
+Fit the predeclared model on development data. Predict the external feature
+table without its outcome, then separately match and evaluate the saved
+predictions using external outcomes.
+
+```{r binary-external}
+binary_fit <- fit_final(binary_task, binary_pipeline)
+binary_external <- bi_example(100, seed = 2)
+binary_external$patient_id <- paste0("EXT_", binary_external$patient_id)
+binary_prediction <- predict_final(
+  binary_fit, binary_external[c("patient_id", predictors)],
+  id_col = "patient_id"
+)
+binary_endpoint <- bi_endpoint(binary_external, "patient_id", "outcome")
+binary_evaluation <- eval_external(binary_prediction, binary_endpoint)
+```
+
+```{r binary-external-calibration}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  print(plot_calib(binary_evaluation, cohort_label = "Synthetic holdout"))
+}
+```
+
+```{r binary-external-dca}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  print(plot_dca(binary_evaluation, cohort_label = "Synthetic holdout"))
+}
+```
+
+The label helps identify the data, but cannot prove external validity or
+independence. Both the source evaluation boundary and the label remain visible.
+Do not choose the final model or its thresholds using these external results.
+
+## Survival development and external results
+
+The task explicitly specifies the prediction horizon and time unit. Survival
+calibration is displayed on the **event-probability** scale at that horizon,
+using columns already present in the saved curve; it is not an S(t) curve.
+Survival DCA likewise uses event probability by the horizon and preserves the
+existing censoring-aware estimator.
+
+```{r survival-cv}
+survival_data <- surv_example(120, seed = 1)
+survival_task <- surv_task(
+  survival_data, "patient_id", "time", "event", predictors, "month",
+  prediction_horizon = 6, decision_thresholds = thresholds
+)
+survival_pipeline <- sb_pipeline()
+survival_cv <- run_cv(survival_task, survival_pipeline, folds = 3, seed = 1)
+```
+
+```{r survival-calibration}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  print(plot_calib(survival_cv))
+}
+```
+
+```{r survival-dca}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  print(plot_dca(survival_cv))
+}
+```
+
+```{r survival-external}
+survival_fit <- fit_final(survival_task, survival_pipeline)
+survival_external <- surv_example(100, seed = 2)
+survival_external$patient_id <- paste0("EXT_", survival_external$patient_id)
+survival_prediction <- predict_final(
+  survival_fit, survival_external[c("patient_id", predictors)],
+  id_col = "patient_id"
+)
+survival_endpoint <- surv_endpoint(
+  survival_external, "patient_id", "time", "event", "month",
+  prediction_horizon = 6
+)
+survival_evaluation <- eval_external(survival_prediction, survival_endpoint)
+```
+
+```{r survival-external-calibration}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  print(plot_calib(survival_evaluation, cohort_label = "Synthetic holdout"))
+}
+```
+
+```{r survival-external-dca}
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  print(plot_dca(survival_evaluation, cohort_label = "Synthetic holdout"))
+}
+```
+
+For methods and assumptions inspect the original
+`survival_evaluation$metrics$calibration` and
+`survival_evaluation$metrics$decision_curve` objects. Plotting does not change
+their statistical definitions or censoring assumptions.
+
+## Comparisons remain one panel per model
+
+Single shared-fold comparisons and single-cohort external comparisons are also
+accepted. They retain the supplied pipeline order. Each DCA panel uses that
+pipeline's own saved reference strategies; no cross-cohort mixing is performed.
+
+```{r comparison, fig.height=9}
+compared <- compare_cv(
+  binary_task,
+  list(binary_pipeline, sb_pipeline(learner = "gaussian_naive_bayes")),
+  folds = 3, seed = 1
+)
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  print(plot_dca(compared))
+}
+```
+
+## Missing requests and failures are not silent
+
+A task that did not declare DCA thresholds cannot acquire a DCA result merely
+by plotting. Default plots omit unusable methods and their empty panels;
+if none are usable, an explicit no-results message is displayed. Set
+`show_unavailable = TRUE` to retain diagnostic panels. No curve is invented.
+Survival calibration likewise needs a previously declared horizon.
+
+```{r not-requested}
+plain_task <- bi_task(binary_data, "patient_id", "outcome", predictors)
+plain_cv <- run_cv(plain_task, binary_pipeline, folds = 3, seed = 1)
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  p <- plot_dca(plain_cv)
+  print(p)
+  attr(p, "stormbreaker_curve_status")
+}
+```
+
+`metric_status` and `run_status` are separate. If the whole run failed at
+another output, this initial plotting interface still withholds the curve;
+the saved coordinates remain in `attr(plot, "stormbreaker_curve_data")` and
+the original result. Default `plot$data` contains displayed pipelines only. No
+failure is relabeled as success. Missing information following a failure is
+distinguished from an unrequested analysis.
+
+Only finite, usable coordinates of successful curves and runs are drawn.
+Missing rows break line segments; they are not filled or bridged. Per-pipeline
+diagnostics are available with `attr(plot, "stormbreaker_curve_status")`, while
+the source retains the complete fitted state and statistical assumptions.
+Use `sb_failure_table(plain_cv)` or `sb_export_failures(plain_cv,
+"new-failures.csv")` for separate saved issue records. Unrequested curves are
+not counted as failures. Review saved error text before sharing the CSV.
+
+These functions do not yet accept repeated CV, stacking or multi-cohort
+collections, and do not implement time-dependent ROC, KM, nomograms, competing
+risks or bootstrap confidence ribbons. Neither function writes files; customize
+and save the returned ggplot explicitly when needed.

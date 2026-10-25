@@ -1,0 +1,25 @@
+test_that("LS-SVM preserves native kernel scores rather than inventing support vectors", {
+  skip_if_not_installed("kernlab")
+  d <- sb_example_binary(n = 100L, seed = 108L)
+  features <- c("gene_c", "gene_a", "gene_b")
+  task <- sb_binary_task(d, "patient_id", "outcome", features)
+  fit <- sb_fit_final(task, sb_pipeline(learner = "lssvm_radial_binary"), capture_diagnostics = TRUE)
+  expect_identical(fit$status, "success")
+  before <- serialize(fit, NULL, version = 2L)
+  q <- sb_svm_diagnostics(fit, "decision_distribution")
+  e <- fit$diagnostic_artifacts$learner$engine
+  z <- scale(data.matrix(d[features]), center = e$center, scale = e$scale)
+  K <- kernlab::kernelMatrix(kernlab::rbfdot(sigma = e$sigma), z, e$scaled_training)
+  native <- sweep(as.matrix(K) %*% e$alpha, 2L, e$intercept, "+")
+  expect_equal(q$native_table, unname(native), tolerance = 1e-10)
+  expect_equal(q$table$decision, as.numeric(native[, 2L] - native[, 1L]), tolerance = 1e-10)
+  expect_equal(plogis(q$table$decision), sb_predict_lssvm_radial_binary(e, data.matrix(d[features])))
+  expect_true(q$sensitive_training_data)
+  expect_null(rownames(q$native_table))
+  expect_s3_class(ggplot2::ggplot_build(sb_plot_algorithm_diagnostic(q)), "ggplot_built")
+  for (type in c("support_counts", "coefficients")) expect_error(sb_svm_diagnostics(fit, type),
+    class = "stormbreaker_unavailable_diagnostic")
+  expect_true(identical(serialize(fit, NULL, version = 2L), before))
+  fit$diagnostic_artifacts <- NULL
+  expect_error(sb_svm_diagnostics(fit, "decision_distribution"), class = "stormbreaker_missing_diagnostic_artifacts")
+})

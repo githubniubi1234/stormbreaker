@@ -1,0 +1,12 @@
+test_that("multiclass SVM figures retain native pairwise decision values", {
+  skip_if_not_installed("e1071")
+  y <- factor(paste0("class", as.integer(iris$Species)))
+  engine <- e1071::svm(iris[1:4], y, kernel = "radial", probability = TRUE)
+  fit <- list(method = "svm_radial", engine = engine, codes = levels(y), classes = levels(iris$Species))
+  drawn <- sb_multiclass_native_plots(fit)
+  expect_named(drawn$plots, c("support_vectors", "decision_distribution"))
+  expect_equal(drawn$tables$decision_distribution$decision, as.vector(engine$decision.values))
+  expect_equal(nrow(drawn$tables$decision_distribution), 450L)
+  expect_length(unique(drawn$tables$decision_distribution$pair), 3)
+  expect_s3_class(ggplot2::ggplot_build(drawn$plots$decision_distribution), "ggplot_built")
+})

@@ -1,0 +1,30 @@
+test_that("tree-package diagnostics retain native nodes, rules and probabilities", {
+  skip_if_not_installed("tree")
+  d <- sb_example_binary(160L,seed=108L)
+  d$gene_a <- d$gene_a + 1.5*d$outcome
+  features <- c("gene_c","gene_a","gene_b")
+  fit <- sb_fit_final(sb_binary_task(d,"patient_id","outcome",features),sb_pipeline(learner="tree_binary"))
+  expect_identical(fit$status,"success")
+  before <- serialize(fit,NULL,version=2L)
+  e <- unserialize(fit$learner_state$engine_raw)
+  f <- e$frame
+  z <- sb_classification_tree_diagnostics(fit)
+  expect_identical(z$native_frame,f)
+  expect_equal(z$table$n,f$n)
+  expect_equal(z$table$probability,unname(f$yprob[,"1"]))
+  expect_equal(z$table$node,as.integer(rownames(f)))
+  for(i in which(!z$table$terminal)) {
+    kids <- match(z$table$node[i]*2L+c(0L,1L),z$table$node)
+    expect_equal(sum(z$table$n[kids]),z$table$n[i])
+    expect_identical(z$table$incoming_rule[kids],paste(z$table$split_feature[i],f$splits[i,]))
+  }
+  native_x <- d[features]; names(native_x) <- sb_tree_binary_internal_names(3L)
+  leaves <- predict(e,native_x,type="where")
+  expect_equal(z$table$probability[leaves],sb_predict_final(fit,d,"patient_id")$predictions$probability)
+  p <- sb_classification_tree_diagnostics(fit,"leaf_probabilities")
+  expect_equal(p$table$probability,unname(f$yprob[f$var=="<leaf>","1"]))
+  expect_equal(sum(p$table$n),nrow(d))
+  expect_identical(sb_native_diagnostics(fit,complete=TRUE)$status$status,c("available","available"))
+  for(view in list(z,p)) expect_s3_class(ggplot2::ggplot_build(sb_plot_algorithm_diagnostic(view)),"ggplot_built")
+  expect_identical(serialize(fit,NULL,version=2L),before)
+})

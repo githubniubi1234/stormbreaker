@@ -1,0 +1,17 @@
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+.Renviron
+.Rprofile
+.Rcheck/
+*.Rcheck/
+*.tar.gz
+*.zip
+Rplots.pdf
+analysis/
+release/
+library/
+check/
+.DS_Store
+Thumbs.db

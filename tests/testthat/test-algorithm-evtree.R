@@ -1,0 +1,40 @@
+test_that("evolutionary tree labels use the original predictor schema", {
+  skip_if_not_installed("evtree")
+  d <- sb_example_binary(160L, seed = 108L)
+  d$gene_a <- d$gene_a + 1.5 * d$outcome
+  features <- c("gene_c", "gene_a", "gene_b")
+  task <- sb_binary_task(d,"patient_id","outcome",features)
+  fit <- sb_fit_final(task,sb_pipeline(learner="evtree_binary"))
+  expect_identical(fit$status,"success")
+  before <- serialize(fit,NULL,version=2L)
+  prediction <- sb_predict_final(fit,d,"patient_id")
+  e <- unserialize(fit$learner_state$engine_raw)
+  z <- sb_evtree_structure(fit)
+  expect_equal(nrow(e$data),0L)
+  expect_equal(z$table$n[1L],nrow(d))
+  expect_equal(sum(z$table$n[z$table$terminal]),nrow(d))
+  check <- function(node) {
+    key <- as.character(partykit::id_node(node))
+    expect_identical(z$native_splits[[key]],partykit::split_node(node))
+    kids <- partykit::kids_node(node)
+    if(length(kids)) {
+      split <- partykit::split_node(node)
+      expected_feature <- names(e$data)[partykit::varid_split(split)]
+      row <- match(as.integer(key),z$table$node)
+      expect_identical(z$table$split_feature[row],expected_feature)
+      expect_identical(expected_feature %in% features,TRUE)
+      branches <- partykit::character_split(split,e$data,digits=7)
+      children <- match(vapply(kids,partykit::id_node,1L),z$table$node)
+      expect_identical(z$table$incoming_rule[children],paste(expected_feature,branches$levels))
+      expect_equal(sum(z$table$n[children]),z$table$n[row])
+      invisible(lapply(kids,check))
+    }
+  }
+  check(partykit::node_party(e))
+  expect_identical(sb_native_diagnostics(fit)$status$status,"available")
+  p <- sb_plot_algorithm_diagnostic(z)
+  expect_identical(p$labels$title,"Evolutionary classification tree")
+  expect_s3_class(ggplot2::ggplot_build(p),"ggplot_built")
+  expect_identical(sb_predict_final(fit,d,"patient_id"),prediction)
+  expect_identical(serialize(fit,NULL,version=2L),before)
+})

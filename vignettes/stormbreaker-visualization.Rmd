@@ -1,0 +1,146 @@
+---
+title: "Visualize saved evidence: curves, uncertainty, stability and SHAP"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Visualize saved evidence: curves, uncertainty, stability and SHAP}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+The visualization interfaces return ordinary `ggplot2` objects. They do not
+choose a winning pipeline, refit a model, invent missing confidence intervals,
+or replace saved performance metrics. Plotting requires the optional `ggplot2`
+package, not a new mandatory modeling dependency.
+
+## Run the complete synthetic example
+
+This installed example creates **19 plots**, including all five Meta-analysis
+types and a fixed-horizon survival example. It uses the core modeling
+dependencies plus `ggplot2` and `metafor` (to compute the Meta results).
+The forest plotting function itself does not require `metafor` when results
+have already been saved. All data are synthetic and are not clinical
+evidence. The 40 bootstrap draws keep the tutorial fast, not research-grade.
+
+```{r full-example, eval=FALSE}
+library(stormbreaker)
+source(system.file("examples", "visualization-core.R", package = "stormbreaker"))
+example <- stormbreaker_visualization_example()
+print(example$plots$ROC_by_assessment_fold)
+print(example$plots$Meta_Discrimination)
+
+# Optional: supply a NEW directory for PNG figures and an offline HTML gallery.
+example <- stormbreaker_visualization_example("my-new-visualization-gallery")
+```
+
+## Binary ROC and precision-recall curves
+
+```{r binary-curves, fig.width=9, fig.height=7}
+library(stormbreaker)
+d <- bi_example(80, seed = 401)
+task <- bi_task(d, "patient_id", "outcome", c("gene_a", "gene_b", "gene_c"))
+pipeline <- sb_pipeline(selector = "univ_binary_auc_top_k", learner = "logistic",
+                        selector_n_features = 2L)
+cv <- run_cv(task, pipeline, folds = 3L, seed = 402)
+if (requireNamespace("ggplot2", quietly = TRUE)) print(plot_roc(cv))
+```
+
+`plot_pr(cv)` uses grouped probability ties and vertical-then-horizontal
+steps. The corresponding within-fold area is noninterpolated average precision.
+Assessment folds are distinct panels, including inside repeated CV, IECV and
+stacking. External cohorts remain distinct. These are descriptive threshold
+curves, not pooled replacements for the saved fold-aware AUC/AP estimand.
+Invalid groups remain in the `stormbreaker_curve_status` attribute rather than
+having bad rows silently removed. `stormbreaker_saved_metrics` retains the
+original summaries. This is not a time-dependent survival ROC interface.
+
+## Cohort-by-model performance
+
+```{r heatmap, eval=FALSE}
+plot_heatmap(example$evaluations, "roc_auc")
+plot_heatmap(example$survival_evaluation, "ipcw_brier")
+```
+
+Cells retain saved values. Failed or unavailable cells are not zero-filled;
+unsupplied model/cohort combinations are labeled. Task, prediction horizon,
+unit, scope and aggregation remain separate. The legend indicates whether
+higher or lower values are better. No best model is selected.
+
+## External uncertainty and Meta-analysis
+
+```{r intervals, eval=FALSE}
+plot_ext_ci(example$bootstraps, "roc_auc")
+plot_ext_diff(example$paired, "roc_auc")
+plot_ext_ci(example$survival_bootstrap, "ipcw_brier_score")
+plot_forest(example$meta$Discrimination)
+plot_forest(example$meta$Calibration_slope)
+plot_forest(example$meta$Mean_calibration)
+plot_forest(example$meta$Discrimination_difference)
+plot_forest(example$meta$Prediction_error_difference)
+```
+
+Intervals are copied from saved outputs without new bootstrap draws. Cohort
+bootstrap interval metric names are used exactly as saved: for example,
+`ipcw_brier_score` in bootstrap outputs versus `ipcw_brier` in result views.
+Cohort
+bootstrap confidence intervals, pooled confidence intervals and between-cohort
+prediction intervals have different labels. A cohort without a saved interval
+does not acquire one from its standard error. Successful/requested draw counts
+and incomplete status remain visible. Differences mean **candidate minus
+reference**: positive differences favor the candidate only for higher-is-better
+metrics. Bootstrap uncertainty is conditional on locked predictions, not the
+uncertainty from developing the model. Three cohorts give weak information about
+heterogeneity; heed the source object's small-cohort caution.
+
+## Feature-selection stability
+
+```{r stability, fig.width=9, fig.height=6}
+if (requireNamespace("ggplot2", quietly = TRUE)) print(plot_freq(cv))
+```
+
+```{r stability-more, eval=FALSE}
+plot_jaccard(cv)
+plot_upset(cv)
+# With a supported glmnet CV result and saved active-set records:
+# plot_freq(glmnet_cv, source = "glmnet_active_set")
+```
+
+Frequency uses the actual successful-fold denominator. Jaccard displays saved
+fold pairs only, without invented diagonal entries. The UpSet-style display
+counts exact intersections among successful folds within each saved entry;
+never-selected features lie outside the selected union. Top-N truncation does
+not discard the full intersection table in `stormbreaker_intersections`.
+There is no cross-repeat pooling. A non-applicable selector produces an
+explicit no-results display, not fabricated stability.
+
+## Existing additive SHAP
+
+```{r shap, eval=FALSE}
+plot_shap_imp(example$explanation)
+plot_shap(example$explanation)
+plot_shap_one(example$explanation, row = 1L, top_n = 2L)
+```
+
+The beeswarm is deterministic and does not change random state. Without
+explicitly ID-aligned feature values, points use a single color. Waterfalls
+retain the background reference, displayed terms, the sum of omitted terms,
+and the reconstructed score. Contributions remain on the saved log-odds or
+log-hazard scale, **not probability changes and not causal effects**. This API
+visualizes supported additive explanations; it is not generic black-box SHAP.
+Original patient identifiers are excluded from the plot data, but individual
+values can still be sensitive.
+
+## Export and inspect
+
+```{r export, eval=FALSE}
+p <- example$plots$SHAP_waterfall
+p$data                         # inspect plotted numbers locally
+ggplot2::ggsave("new-waterfall.pdf", p, width = 12, height = 7)
+sb_render_visual_report(example$plots, "new-gallery.html", width = 12, height = 9)
+```
+
+Choose new output paths and review visible labels and points before sharing.
+The HTML gallery is a single offline file with embedded SVG images, without
+raw result objects or patient tables; it is not an anonymization service.
+Use larger dimensions for many cohorts/folds. For scalar tables, calibration,
+decision curves and failure records, the existing `sb_render_report()` remains
+available unchanged.

@@ -1,0 +1,12 @@
+^\.gitignore$
+^\.github$
+^_pkgdown\.yml$
+^README\.zh-CN\.md$
+^CONTRIBUTING\.md$
+^docs$
+^.*\.Rproj$
+^\.Rproj\.user$
+^tests/testthat/Rplots\.pdf$
+
+^CITATION\.cff$
+^RELEASE_NOTES\.md$

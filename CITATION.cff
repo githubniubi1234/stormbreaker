@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "Please cite this software when using STORMBREAKER."
+type: software
+title: "STORMBREAKER: Transcriptomic Prediction and Model Comparison"
+version: 0.3.47
+repository-code: "https://github.com/githubniubi1234/stormbreaker"
+authors:
+  - given-names: HimejimaGyomei
+    email: Polishedtjq1171137951@outlook.com
+license: MIT
+abstract: "R workflows for transcriptomic binary and survival prediction, model comparison and independent-cohort evaluation."

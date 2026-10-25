@@ -1,0 +1,8 @@
+bibentry(
+  bibtype = "Manual",
+  title = "STORMBREAKER: Transcriptomic Prediction and Model Comparison",
+  author = person(given = "HimejimaGyomei", email = "Polishedtjq1171137951@outlook.com"),
+  year = "2026",
+  url = meta$URL,
+  note = paste("R package version", meta$Version)
+)

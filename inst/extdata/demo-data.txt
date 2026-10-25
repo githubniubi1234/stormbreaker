@@ -1,0 +1,16 @@
+These five CSV files contain synthetic tutorial data, not study patients.
+Each row represents one independent patient. Predictor values are numeric.
+
+File                              Rows  Generator             Seed  ID prefix
+demo-binary-development.csv        120   sb_example_binary      42    DEV_
+demo-binary-external-a.csv           80   sb_example_binary      17    EXTA_
+demo-binary-external-b.csv           70   sb_example_binary      23    EXTB_
+demo-survival-development.csv      160   sb_example_survival    42    SDEV_
+demo-survival-external.csv          100   sb_example_survival    17    SEXT_
+
+Binary outcome: 0/1; 1 is the positive class.
+Survival time: months; event 1 means observed event, 0 means censoring.
+All files use gene_a, gene_b and gene_c as example predictors.
+The generators belong to the 0.3.44 implementation retained in 0.3.45.
+
+Regeneration: examples/regenerate-demo-data.R (writes only to a new caller-selected directory).

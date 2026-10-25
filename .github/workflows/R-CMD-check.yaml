@@ -1,0 +1,98 @@
+# Based on the maintained examples at https://github.com/r-lib/actions/tree/v2/examples
+name: R package checks
+
+'on':
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Package, core tests and tutorials (${{ matrix.os }}, R ${{ matrix.r }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        r: [release]
+        include:
+          - os: windows-latest
+            r: '4.3'
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      _R_CHECK_FORCE_SUGGESTS_: 'false'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: r-lib/actions/setup-pandoc@v2
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.r }}
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: 'NA'
+          extra-packages: |
+            any::rcmdcheck
+            any::testthat
+            any::rmarkdown
+            any::ggplot2
+            any::metafor
+            any::patchwork
+            any::glmnet
+            any::knitr
+            any::markdown
+            any::pkgload
+            any::rpart
+      - name: Core regressions and tutorial assertions
+        shell: Rscript {0}
+        run: |
+          testthat::test_local(
+            filter = '^(shap-prediction-reuse|logrank-status|short-scenarios|read-cohort|example-data)$',
+            stop_on_failure = TRUE)
+      - name: Six runnable tutorial scenarios
+        shell: Rscript {0}
+        run: |
+          pkgload::load_all('.', helpers = FALSE)
+          source('tools/check-scenarios.R')
+      # The optional-engine suite is not run by this package/docs check.
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          build_args: 'c("--no-manual")'
+          args: 'c("--no-manual", "--no-tests")'
+
+  current-engines:
+    name: Current CRAN engines (Windows R 4.5)
+    runs-on: windows-latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      XGB_STRICT_MODE: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5'
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: 'NA'
+          extra-packages: |
+            any::testthat
+            any::xgboost
+            any::lightgbm
+            any::mda
+            any::glmnet
+            any::Boruta
+            any::ranger
+      - name: Native predictions, saved-model replay and selector reuse
+        shell: Rscript {0}
+        run: |
+          testthat::test_local(
+            filter = '^(xgboost|lightgbm|fda-stable|selector-reuse|user-models)',
+            stop_on_failure = TRUE
+          )

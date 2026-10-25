@@ -1,0 +1,262 @@
+---
+title: "From Task to Outcome-Blind External Evaluation"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{From Task to Outcome-Blind External Evaluation}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+This vignette shows the shortest complete `stormbreaker` workflow for its two
+supported tasks:
+
+- binary prediction, where the saved prediction is a class-one probability;
+- right-censored survival prediction, where the saved prediction contains a
+  risk score and, when a horizon is declared, a survival probability.
+
+The data below are synthetic and are used only to demonstrate software
+behavior. They do not establish that either model is suitable for a particular
+biomedical study.
+
+```{r load-package}
+library(stormbreaker)
+predictors <- c("gene_a", "gene_b", "gene_c")
+```
+
+## The boundary that prevents external-outcome selection
+
+The development and external parts of the workflow are deliberately separate:
+
+1. create a task from development patients;
+2. assess a predeclared pipeline on shared outer folds;
+3. choose and fit the final pipeline without inspecting external outcomes;
+4. predict an external predictor table that contains no outcome columns;
+5. create a separate outcome-only endpoint;
+6. evaluate the already saved predictions by exact patient ID.
+
+The example code has all synthetic columns in memory, but the call to
+`predict_final()` receives only patient IDs and predictors. In a real study,
+the same boundary should be enforced by study design and data access, not only
+by code.
+
+## Binary prediction
+
+Create one development sample and one untouched demonstration sample.
+
+```{r binary-data}
+binary_data <- bi_example(n = 120L, seed = 20260831L)
+binary_development <- binary_data[1:80, , drop = FALSE]
+binary_external <- binary_data[81:120, , drop = FALSE]
+
+binary_task <- bi_task(
+  binary_development,
+  id_col = "patient_id",
+  outcome_col = "outcome",
+  predictors = predictors
+)
+```
+
+Declare a fixed logistic-regression pipeline and obtain patient-level
+out-of-fold predictions. This example has no learned selector or tuned learner,
+so it needs no inner resampling.
+
+```{r binary-development}
+binary_pipeline <- sb_pipeline(learner = "logistic")
+binary_cv <- run_cv(
+  binary_task,
+  binary_pipeline,
+  folds = 3L,
+  seed = 101L
+)
+
+data.frame(
+  status = binary_cv$status,
+  complete_oof = binary_cv$complete_oof,
+  roc_auc = binary_cv$metrics$roc_auc$estimate,
+  brier_score = binary_cv$metrics$brier_score$estimate
+)
+```
+
+Fit the declared pipeline on all development patients, then predict external
+predictors without supplying the outcome.
+
+```{r binary-prediction}
+binary_fit <- fit_final(binary_task, binary_pipeline)
+binary_prediction <- predict_final(
+  binary_fit,
+  binary_external[c("patient_id", predictors)],
+  id_col = "patient_id"
+)
+
+head(
+  binary_prediction$predictions[c("patient_id", "probability")],
+  3L
+)
+```
+
+Only after prediction do we create the endpoint and evaluate it.
+
+```{r binary-evaluation}
+binary_endpoint <- bi_endpoint(
+  binary_external[c("patient_id", "outcome")],
+  id_col = "patient_id",
+  outcome_col = "outcome"
+)
+binary_evaluation <- eval_external(
+  binary_prediction,
+  binary_endpoint
+)
+
+data.frame(
+  status = binary_evaluation$status,
+  roc_auc = binary_evaluation$metrics$roc_auc$estimate,
+  brier_score = binary_evaluation$metrics$brier_score$estimate
+)
+```
+
+## Survival prediction
+
+The survival workflow adds a time unit and a prediction horizon. Here the
+horizon is five months.
+
+```{r survival-data}
+survival_data <- surv_example(n = 120L, seed = 20260831L)
+survival_development <- survival_data[1:80, , drop = FALSE]
+survival_external <- survival_data[81:120, , drop = FALSE]
+
+survival_task <- surv_task(
+  survival_development,
+  id_col = "patient_id",
+  time_col = "time",
+  event_col = "event",
+  predictors = predictors,
+  time_unit = "month",
+  prediction_horizon = 5
+)
+```
+
+The fixed Cox model is assessed on the same kind of outer-fold boundary used
+for binary prediction.
+
+```{r survival-development}
+survival_pipeline <- sb_pipeline(learner = "coxph")
+survival_cv <- run_cv(
+  survival_task,
+  survival_pipeline,
+  folds = 3L,
+  seed = 102L
+)
+
+data.frame(
+  status = survival_cv$status,
+  complete_oof = survival_cv$complete_oof,
+  complete_survival_probability_oof =
+    survival_cv$complete_survival_probability_oof,
+  harrell_c = survival_cv$metrics$harrell_c$estimate,
+  ipcw_brier = survival_cv$metrics$ipcw_brier$estimate
+)
+```
+
+Fit, predict without outcomes, and then attach the separately constructed
+endpoint.
+
+```{r survival-prediction}
+survival_fit <- fit_final(survival_task, survival_pipeline)
+survival_prediction <- predict_final(
+  survival_fit,
+  survival_external[c("patient_id", predictors)],
+  id_col = "patient_id"
+)
+
+head(
+  survival_prediction$predictions[
+    c("patient_id", "risk", "survival_probability")
+  ],
+  3L
+)
+```
+
+```{r survival-evaluation}
+survival_endpoint <- surv_endpoint(
+  survival_external[c("patient_id", "time", "event")],
+  id_col = "patient_id",
+  time_col = "time",
+  event_col = "event",
+  time_unit = "month",
+  prediction_horizon = 5
+)
+survival_evaluation <- eval_external(
+  survival_prediction,
+  survival_endpoint
+)
+
+data.frame(
+  status = survival_evaluation$status,
+  harrell_c = survival_evaluation$metrics$harrell_c$estimate,
+  time_auc = survival_evaluation$metrics$time_auc$estimate,
+  ipcw_brier = survival_evaluation$metrics$ipcw_brier$estimate
+)
+```
+
+## Where inner cross-validation belongs
+
+The two examples use fixed learners. If a pipeline instead contains a
+supervised selector or a tuned learner, that learning must happen again inside
+each outer analysis fold. `stormbreaker` routes those operations through the
+analysis-fold adapter rather than learning them once on the full development
+outcome.
+
+The outer results remain method-development evidence. They may describe several
+predeclared pipelines on shared folds, but the package does not rank them or
+declare a winner. Once results are used to revise a pipeline, they are no longer
+independent external validation.
+
+## Find methods and optional dependencies
+
+The package core imports only the packages needed for its common task,
+resampling, optimization, and survival infrastructure. Most algorithm engines
+are optional `Suggests`: they are needed only when the corresponding learner or
+selector is requested. Query learner-level rows to see which engines the local
+R library can currently provide:
+
+```{r optional-dependencies}
+learners <- sb_pipeline_registry(
+  level = "learner",
+  check_installed = TRUE
+)
+table(learners$task_type, learners$dependency_status)
+
+registry <- sb_pipeline_registry(level = "route")
+examples <- match(
+  c("logistic", "survivalsvm_additive_fixed"),
+  registry$learner
+)
+registry[examples, c(
+  "task_type", "selector", "learner", "optional_dependency"
+)]
+```
+
+Learner-level status locates R packages but does not load an engine or fit a
+model. Route-level rows combine the dependencies of the learner and selector.
+If an optional engine is absent or fails, that route reports the failure and is
+not silently replaced by another learner.
+
+The current runtime registry is R-only: it contains no Python-dependent
+pipeline.
+
+## What this vignette does not prove
+
+Successful execution does not prove transportability, clinical usefulness, or
+superiority of either example model. Those claims require a predeclared study,
+appropriate cohorts, uncertainty analysis, calibration assessment, decision
+analysis when relevant, and external data that were not used to choose the
+model.
